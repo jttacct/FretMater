@@ -2,7 +2,8 @@
   "name": "FretMaster: Guitar Training & Pitch Studio",
   "description": "Interactive guitar training app featuring real-time audio pitch detection, dynamic fretboard trainer, customizable backing tracks, looper, analytics, and creator marketplace.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

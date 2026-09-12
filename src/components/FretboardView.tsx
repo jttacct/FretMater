@@ -14,7 +14,7 @@ import {
   getFretMarkerType,
 } from '../utils/fretboardUtils';
 import { soundEngine } from '../utils/soundEngine';
-import { Volume2, Music, Layers, Settings2, Sliders, Eye } from 'lucide-react';
+import { Volume2, Music, Layers, Settings2, Sliders, Eye, ZoomIn, ZoomOut, Video } from 'lucide-react';
 
 interface FretboardViewProps {
   currentTuning: GuitarTuning;
@@ -25,6 +25,7 @@ interface FretboardViewProps {
   setSelectedScale: (scale: ScaleDefinition | null) => void;
   livePitch: DetectedPitch | null;
   onFretClick?: (stringNum: number, fret: number, note: NoteName) => void;
+  onOpenTeachingTab?: () => void;
 }
 
 export const FretboardView: React.FC<FretboardViewProps> = ({
@@ -36,11 +37,16 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
   setSelectedScale,
   livePitch,
   onFretClick,
+  onOpenTeachingTab,
 }) => {
   const [fretCount, setFretCount] = useState<number>(15); // 12, 15, 21, 24
   const [displayMode, setDisplayMode] = useState<'notes' | 'intervals' | 'octaves'>('notes');
   const [showAllNotes, setShowAllNotes] = useState<boolean>(false);
   const [lastPluckedString, setLastPluckedString] = useState<number | null>(null);
+
+  // Zoom feature for online teaching
+  const [fretZoomSection, setFretZoomSection] = useState<'all' | '0-5' | '5-12' | '12-24'>('all');
+  const [zoomScale, setZoomScale] = useState<number>(100);
 
   const handlePlayFret = (stringNum: number, fret: number) => {
     const pos = getFretPosition(stringNum, fret, currentTuning);
@@ -53,7 +59,25 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
     }
   };
 
-  const fretsArray = Array.from({ length: fretCount + 1 }, (_, i) => i);
+  const getRenderedFrets = () => {
+    switch (fretZoomSection) {
+      case '0-5':
+        return [0, 1, 2, 3, 4, 5];
+      case '5-12':
+        return [5, 6, 7, 8, 9, 10, 11, 12];
+      case '12-24':
+        return Array.from({ length: Math.min(13, Math.max(1, fretCount - 11)) }, (_, i) => 12 + i);
+      case 'all':
+      default:
+        return Array.from({ length: fretCount + 1 }, (_, i) => i);
+    }
+  };
+
+  const renderedFrets = getRenderedFrets();
+  const isNutIncluded = renderedFrets.includes(0);
+  const fretsToDisplay = renderedFrets.filter((f) => f > 0);
+  const fretColWidth = Math.round(44 * (zoomScale / 100));
+
   // Strings from 1 (High E) to 6 (Low E)
   const stringsArray = [1, 2, 3, 4, 5, 6];
 
@@ -180,6 +204,61 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
               </button>
             ))}
           </div>
+
+          {/* Optical Zoom & Neck Isolation for Online Teaching */}
+          <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/90 px-2.5 py-1 rounded-xl border border-blue-500/30 text-xs">
+            <span className="text-blue-400 font-bold flex items-center gap-1">
+              <ZoomIn className="w-3.5 h-3.5" />
+              <span>Zoom:</span>
+            </span>
+
+            {[
+              { id: 'all', label: 'Full' },
+              { id: '0-5', label: '0-5 Nut' },
+              { id: '5-12', label: '5-12 Mid' },
+              { id: '12-24', label: '12+ Lead' },
+            ].map((z) => (
+              <button
+                key={z.id}
+                onClick={() => setFretZoomSection(z.id as any)}
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all ${
+                  fretZoomSection === z.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {z.label}
+              </button>
+            ))}
+
+            <div className="h-3.5 w-px bg-slate-700" />
+
+            {[100, 125, 150].map((s) => (
+              <button
+                key={s}
+                onClick={() => setZoomScale(s)}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold transition-all ${
+                  zoomScale === s
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title={`Magnify display to ${s}% for teaching`}
+              >
+                {s}%
+              </button>
+            ))}
+          </div>
+
+          {onOpenTeachingTab && (
+            <button
+              onClick={onOpenTeachingTab}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+              title="Open 1-on-1 Online Teaching Classroom with Webcam and Zoom Integration"
+            >
+              <Video className="w-3.5 h-3.5" />
+              <span>Teach Online (Zoom)</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -208,12 +287,16 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
       <div className="mt-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
         <div className="min-w-[780px] select-none">
           {/* Fret Number Markers Header */}
-          <div className="grid grid-cols-[50px_repeat(var(--frets),1fr)] text-center text-[11px] font-mono font-bold text-slate-400 mb-1"
-               style={{ gridTemplateColumns: `54px repeat(${fretCount}, minmax(42px, 1fr))` }}>
-            <div className="text-slate-400">Nut</div>
-            {fretsArray.slice(1).map((fret) => (
+          <div
+            className="grid text-center text-[11px] font-mono font-bold text-slate-400 mb-1"
+            style={{
+              gridTemplateColumns: `54px repeat(${fretsToDisplay.length}, minmax(${fretColWidth}px, 1fr))`,
+            }}
+          >
+            <div className="text-slate-400 font-bold">{isNutIncluded ? 'Nut' : 'Open'}</div>
+            {fretsToDisplay.map((fret) => (
               <div key={fret} className="flex flex-col items-center justify-center">
-                <span>{fret}</span>
+                <span className={fret === 12 || fret === 24 ? 'text-amber-400 font-black' : ''}>{fret}</span>
                 {/* Traditional Top Dots */}
                 {fret === 12 || fret === 24 ? (
                   <span className="text-amber-400 text-[10px] leading-none">••</span>
@@ -231,7 +314,9 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
             {/* Wood Grain & Frets Grid */}
             <div
               className="grid gap-0"
-              style={{ gridTemplateColumns: `54px repeat(${fretCount}, minmax(42px, 1fr))` }}
+              style={{
+                gridTemplateColumns: `54px repeat(${fretsToDisplay.length}, minmax(${fretColWidth}px, 1fr))`,
+              }}
             >
               {stringsArray.map((stringNum) => {
                 const openPos = getFretPosition(stringNum, 0, currentTuning);
@@ -239,7 +324,7 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
 
                 return (
                   <React.Fragment key={stringNum}>
-                    {/* Open String (Nut) */}
+                    {/* Open String (Nut or Open Reference) */}
                     <div
                       onClick={() => handlePlayFret(stringNum, 0)}
                       className="relative h-12 flex items-center justify-center bg-slate-950/90 border-r-4 border-amber-100/90 cursor-pointer hover:bg-slate-800 transition-colors"
@@ -258,8 +343,8 @@ export const FretboardView: React.FC<FretboardViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Frets 1 to N */}
-                    {fretsArray.slice(1).map((fret) => {
+                    {/* Frets to Display */}
+                    {fretsToDisplay.map((fret) => {
                       const pos = getFretPosition(stringNum, fret, currentTuning);
                       const marker = getFretMarkerType(fret);
                       const isScaleInfo = selectedScale

@@ -1,5 +1,5 @@
-import { BackingTrack, NoteName } from '../types/guitar';
-import { midiToFrequency, noteToMidi, NOTE_NAMES } from './fretboardUtils';
+import { BackingTrack, NoteName, CustomChordProgression, ProgressionChord, SynthVoiceType, ChordVoicing } from '../types/guitar';
+import { midiToFrequency, noteToMidi, NOTE_NAMES, GUITAR_TUNINGS, getFretPosition } from './fretboardUtils';
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
@@ -8,6 +8,12 @@ class SoundEngine {
   private bpm: number = 100;
   private timerId: number | null = null;
   private currentStep: number = 0;
+
+  // Custom Progression Synth Playback state
+  private isProgressionPlaying: boolean = false;
+  private progressionTimerId: number | null = null;
+  private activeProgression: CustomChordProgression | null = null;
+  private progressionStep: number = 0;
 
   // Mixer gains
   public masterGain: GainNode | null = null;
@@ -425,6 +431,400 @@ class SoundEngine {
       osc.start(this.ctx!.currentTime + strumDelay);
       osc.stop(this.ctx!.currentTime + strumDelay + 0.85);
     });
+  }
+
+  /**
+   * Translates a ProgressionChord into its constituent MIDI note numbers
+   */
+  public getChordMidiNotes(chord: ProgressionChord): number[] {
+    const root = chord.root;
+    const baseMidi = noteToMidi(root, 3); // C3 to B3 base octave
+
+    if (chord.voicingNotes && chord.voicingNotes.length > 0) {
+      return chord.voicingNotes.map((interval) => baseMidi + interval);
+    }
+
+    const q = (chord.quality || '').toLowerCase().trim();
+    let intervals: number[] = [0, 4, 7, 12]; // default major
+
+    if (q === 'm' || q === 'min' || q === 'minor') {
+      intervals = [0, 3, 7, 12];
+    } else if (q === '7' || q === 'dom7') {
+      intervals = [0, 4, 7, 10];
+    } else if (q === 'maj7' || q === 'major7') {
+      intervals = [0, 4, 7, 11];
+    } else if (q === 'm7' || q === 'min7') {
+      intervals = [0, 3, 7, 10];
+    } else if (q === 'dim' || q === 'dim7') {
+      intervals = [0, 3, 6, 9];
+    } else if (q === 'm7b5' || q === 'half-dim') {
+      intervals = [0, 3, 6, 10];
+    } else if (q === 'sus4') {
+      intervals = [0, 5, 7, 12];
+    } else if (q === 'sus2') {
+      intervals = [0, 2, 7, 12];
+    } else if (q === 'add9') {
+      intervals = [0, 4, 7, 14];
+    } else if (q === '9') {
+      intervals = [0, 4, 7, 10, 14];
+    } else if (q === 'm9') {
+      intervals = [0, 3, 7, 10, 14];
+    } else if (q === 'maj9') {
+      intervals = [0, 4, 7, 11, 14];
+    } else if (q === '7#9') {
+      intervals = [0, 4, 7, 10, 15]; // Hendrix chord!
+    } else if (q === 'aug') {
+      intervals = [0, 4, 8, 12];
+    }
+
+    return intervals.map((interval) => baseMidi + interval);
+  }
+
+  /**
+   * Plays a single chord voicing using selected synthesizer voice
+   */
+  public playChordVoicing(
+    chord: ProgressionChord,
+    voice: SynthVoiceType = 'poly-synth',
+    duration: number = 1.8
+  ): void {
+    this.init();
+    const midiNotes = this.getChordMidiNotes(chord);
+
+    switch (voice) {
+      case 'acoustic-pluck': {
+        // Karplus-Strong string pluck across notes
+        midiNotes.forEach((midi, idx) => {
+          const freq = midiToFrequency(midi);
+          setTimeout(() => {
+            this.playPluckedString(freq, duration);
+          }, idx * 30);
+        });
+        break;
+      }
+
+      case 'electric-crunch': {
+        this.playCrunchChord(midiNotes, duration);
+        break;
+      }
+
+      case 'lofi-keys': {
+        this.playLoFiKeysChord(midiNotes, duration);
+        break;
+      }
+
+      case 'ambient-pad': {
+        this.playAmbientPadChord(midiNotes, duration);
+        break;
+      }
+
+      case 'poly-synth':
+      default: {
+        this.playPolySynthChord(midiNotes, duration);
+        break;
+      }
+    }
+  }
+
+  /**
+   * Plays an exact guitar chord voicing defined by physical fret positions (e.g. from Chord Encyclopedia)
+   * Plays with realistic arpeggio strum or full acoustic pluck
+   */
+  public playVoicingFrets(
+    voicing: ChordVoicing,
+    arpeggiate: boolean = false,
+    duration: number = 2.4
+  ): void {
+    this.init();
+    const tuning = GUITAR_TUNINGS[0];
+
+    // Filter valid sounding strings (fret >= 0), ordered from low E (string 6) to high E (string 1)
+    const activeStrings = voicing.frets
+      .filter((f) => f.fret >= 0)
+      .sort((a, b) => b.string - a.string);
+
+    if (activeStrings.length === 0) return;
+
+    const strumDelay = arpeggiate ? 100 : 25; // ms between strings
+
+    activeStrings.forEach((fretInfo, idx) => {
+      const pos = getFretPosition(fretInfo.string, fretInfo.fret, tuning);
+      setTimeout(() => {
+        this.playPluckedString(pos.frequency, duration);
+      }, idx * strumDelay);
+    });
+  }
+
+  /**
+   * Warm analog polyphonic synthesizer with detuned dual oscillators
+   */
+  private playPolySynthChord(midiNotes: number[], duration: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.chordGain) return;
+
+    midiNotes.forEach((midi, idx) => {
+      const freq = midiToFrequency(midi);
+      const strumOffset = idx * 0.015;
+      const startTime = ctx.currentTime + strumOffset;
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const noteGain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+
+      // Sawtooth + Square with slight chorus detune
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(freq, startTime);
+      osc1.detune.setValueAtTime(-6, startTime);
+
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(freq, startTime);
+      osc2.detune.setValueAtTime(6, startTime);
+
+      // 24dB low-pass filter with envelope opening
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, startTime);
+      filter.frequency.exponentialRampToValueAtTime(3200, startTime + 0.12);
+      filter.frequency.exponentialRampToValueAtTime(1100, startTime + duration);
+      filter.Q.value = 3.5;
+
+      // ADSR Gain Envelope
+      const level = 0.18 / Math.sqrt(midiNotes.length);
+      noteGain.gain.setValueAtTime(0.0001, startTime);
+      noteGain.gain.linearRampToValueAtTime(level, startTime + 0.035);
+      noteGain.gain.exponentialRampToValueAtTime(level * 0.6, startTime + 0.4);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(noteGain);
+      noteGain.connect(this.chordGain);
+
+      osc1.start(startTime);
+      osc2.start(startTime);
+      osc1.stop(startTime + duration + 0.05);
+      osc2.stop(startTime + duration + 0.05);
+    });
+  }
+
+  /**
+   * Overdriven tube amplifier crunch chord with soft-clipping waveshaper
+   */
+  private playCrunchChord(midiNotes: number[], duration: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.chordGain) return;
+
+    // Build soft clipping curve
+    const n = 256;
+    const curve = new Float32Array(n);
+    const k = 20;
+    const deg = Math.PI / 180;
+    for (let i = 0; i < n; ++i) {
+      const x = (i * 2) / n - 1;
+      curve[i] = ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+    }
+
+    midiNotes.forEach((midi, idx) => {
+      const freq = midiToFrequency(midi);
+      const strumOffset = idx * 0.01;
+      const startTime = ctx.currentTime + strumOffset;
+
+      const osc = ctx.createOscillator();
+      const waveShaper = ctx.createWaveShaper();
+      const cabFilter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, startTime);
+
+      waveShaper.curve = curve;
+      waveShaper.oversample = '4x';
+
+      cabFilter.type = 'lowpass';
+      cabFilter.frequency.setValueAtTime(3400, startTime);
+      cabFilter.Q.value = 1.2;
+
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.linearRampToValueAtTime(0.13, startTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + Math.min(duration, 1.4));
+
+      osc.connect(waveShaper);
+      waveShaper.connect(cabFilter);
+      cabFilter.connect(gain);
+      gain.connect(this.chordGain);
+
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    });
+  }
+
+  /**
+   * Lo-Fi Electric Piano (warm Rhodes / Wurlitzer vibe)
+   */
+  private playLoFiKeysChord(midiNotes: number[], duration: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.chordGain) return;
+
+    midiNotes.forEach((midi, idx) => {
+      const freq = midiToFrequency(midi);
+      const strumOffset = idx * 0.02;
+      const startTime = ctx.currentTime + strumOffset;
+
+      const oscSine = ctx.createOscillator();
+      const oscTri = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const noteGain = ctx.createGain();
+
+      oscSine.type = 'sine';
+      oscSine.frequency.setValueAtTime(freq, startTime);
+
+      oscTri.type = 'triangle';
+      oscTri.frequency.setValueAtTime(freq * 2, startTime);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1500, startTime);
+      filter.frequency.exponentialRampToValueAtTime(600, startTime + duration);
+
+      noteGain.gain.setValueAtTime(0.0001, startTime);
+      noteGain.gain.linearRampToValueAtTime(0.18, startTime + 0.02);
+      noteGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+      oscSine.connect(filter);
+      oscTri.connect(filter);
+      filter.connect(noteGain);
+      noteGain.connect(this.chordGain);
+
+      oscSine.start(startTime);
+      oscTri.start(startTime);
+      oscSine.stop(startTime + duration);
+      oscTri.stop(startTime + duration);
+    });
+  }
+
+  /**
+   * Shimmering atmospheric ambient pad with slow attack
+   */
+  private playAmbientPadChord(midiNotes: number[], duration: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.chordGain) return;
+
+    midiNotes.forEach((midi) => {
+      const freq = midiToFrequency(midi);
+      const startTime = ctx.currentTime;
+
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const filter = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(freq, startTime);
+
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(freq, startTime);
+      osc2.detune.setValueAtTime(4, startTime);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(2200, startTime);
+      filter.Q.value = 1.8;
+
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.linearRampToValueAtTime(0.13, startTime + 0.35);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + 0.7);
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.chordGain);
+
+      osc1.start(startTime);
+      osc2.start(startTime);
+      osc1.stop(startTime + duration + 0.8);
+      osc2.stop(startTime + duration + 0.8);
+    });
+  }
+
+  /**
+   * Real-time Custom Progression Timeline Synth Player
+   */
+  public startProgressionSynth(
+    progression: CustomChordProgression,
+    onStepTick?: (barIndex: number, beat: number, step: number, chord: ProgressionChord) => void
+  ): void {
+    this.stopProgressionSynth();
+    this.stopBackingTrack();
+    this.init();
+
+    if (!progression.chords || progression.chords.length === 0) return;
+
+    this.isProgressionPlaying = true;
+    this.activeProgression = progression;
+    this.progressionStep = 0;
+
+    const bpm = Math.max(50, Math.min(220, progression.bpm || 110));
+    const stepIntervalMs = ((60 / bpm) * 1000) / 4; // 16th notes
+    const totalBars = progression.chords.length;
+    const totalSteps = totalBars * 16;
+
+    const loop = () => {
+      if (!this.isProgressionPlaying || !this.activeProgression) return;
+
+      const total16th = this.progressionStep % totalSteps;
+      const barIndex = Math.floor(total16th / 16);
+      const stepInBar = total16th % 16; // 0 to 15
+      const beat = Math.floor(stepInBar / 4); // 0, 1, 2, 3
+
+      const currentChord = this.activeProgression.chords[barIndex] || this.activeProgression.chords[0];
+
+      // 1. Drums (if enabled)
+      if (this.activeProgression.drumsEnabled && this.activeProgression.drumPattern !== 'none') {
+        this.playDrumStep(stepInBar, this.activeProgression.drumPattern);
+      }
+
+      // 2. Bass synthesis (if enabled)
+      if (this.activeProgression.bassEnabled) {
+        if (stepInBar === 0 || stepInBar === 6 || stepInBar === 10) {
+          const rootMidi = noteToMidi(currentChord.root, 2);
+          this.playBassNote(rootMidi, 0.42);
+        }
+      }
+
+      // 3. Chord Strums / Voicings on timeline
+      if (currentChord.beats === 2) {
+        if (stepInBar === 0 || stepInBar === 8) {
+          this.playChordVoicing(currentChord, this.activeProgression.synthVoice, (60 / bpm) * 1.8);
+        }
+      } else {
+        if (stepInBar === 0) {
+          this.playChordVoicing(currentChord, this.activeProgression.synthVoice, (60 / bpm) * 3.4);
+        } else if (stepInBar === 8 && this.activeProgression.synthVoice !== 'ambient-pad') {
+          // Half-bar comping strum
+          this.playChordVoicing(currentChord, this.activeProgression.synthVoice, (60 / bpm) * 1.5);
+        }
+      }
+
+      // Callback to update UI playhead cursor & LEDs
+      if (onStepTick) {
+        onStepTick(barIndex, beat, stepInBar, currentChord);
+      }
+
+      this.progressionStep++;
+      this.progressionTimerId = window.setTimeout(loop, stepIntervalMs);
+    };
+
+    loop();
+  }
+
+  public stopProgressionSynth(): void {
+    this.isProgressionPlaying = false;
+    if (this.progressionTimerId !== null) {
+      clearTimeout(this.progressionTimerId);
+      this.progressionTimerId = null;
+    }
+  }
+
+  public isProgressionActive(): boolean {
+    return this.isProgressionPlaying;
   }
 
   public setVolumes(master: number, drums: number, bass: number, chords: number): void {

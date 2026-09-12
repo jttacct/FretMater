@@ -8,6 +8,8 @@ import {
   PracticeReminderSettings,
   DigitalAsset,
   TipTransaction,
+  CustomChordProgression,
+  OnlineLessonSession,
 } from '../types/guitar';
 
 const STORAGE_KEYS = {
@@ -21,6 +23,8 @@ const STORAGE_KEYS = {
   DIGITAL_ASSETS: 'fretmaster_assets_v1',
   TIPS: 'fretmaster_tips_v1',
   LAST_SYNC: 'fretmaster_last_sync_v1',
+  PROGRESSIONS: 'fretmaster_progressions_v1',
+  LESSONS: 'fretmaster_lessons_v1',
 };
 
 // Initial realistic seed data for community feed
@@ -378,5 +382,176 @@ export const storage = {
 
   setLastSyncTime(timeStr: string): void {
     localStorage.setItem(STORAGE_KEYS.LAST_SYNC, timeStr);
+  },
+
+  // Custom Chord Progressions
+  getProgressions(): CustomChordProgression[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.PROGRESSIONS);
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        console.error('Error reading progressions:', e);
+      }
+    }
+    const initial: CustomChordProgression[] = [
+      {
+        id: 'prog-pop-classic',
+        title: 'Pop Axis of Awesome (I - V - vi - IV)',
+        key: 'C',
+        scaleMode: 'Major',
+        bpm: 116,
+        synthVoice: 'poly-synth',
+        drumPattern: 'straight-rock',
+        bassEnabled: true,
+        drumsEnabled: true,
+        description: 'The legendary four-chord progression heard in hundreds of iconic pop anthems.',
+        createdAt: Date.now() - 86400000 * 2,
+        chords: [
+          { id: 'c1', root: 'C', quality: 'maj', symbol: 'C', beats: 4, degree: 'I', color: 'border-amber-400/80' },
+          { id: 'c2', root: 'G', quality: 'maj', symbol: 'G', beats: 4, degree: 'V', color: 'border-cyan-400/80' },
+          { id: 'c3', root: 'A', quality: 'm', symbol: 'Am', beats: 4, degree: 'vi', color: 'border-rose-400/80' },
+          { id: 'c4', root: 'F', quality: 'maj', symbol: 'F', beats: 4, degree: 'IV', color: 'border-emerald-400/80' },
+        ],
+      },
+      {
+        id: 'prog-neo-soul',
+        title: 'Neo-Soul Groove & R&B Lush (ii7 - V9 - Imaj7 - VI7)',
+        key: 'C',
+        scaleMode: 'Major',
+        bpm: 88,
+        synthVoice: 'lofi-keys',
+        drumPattern: 'funky-break',
+        bassEnabled: true,
+        drumsEnabled: true,
+        description: 'Velvety jazz extensions with syncopated comping and warm Rhodes tones.',
+        createdAt: Date.now() - 86400000,
+        chords: [
+          { id: 'ns1', root: 'D', quality: 'm7', symbol: 'Dm7', beats: 4, degree: 'ii7', color: 'border-indigo-400/80' },
+          { id: 'ns2', root: 'G', quality: '9', symbol: 'G9', beats: 4, degree: 'V9', color: 'border-cyan-400/80' },
+          { id: 'ns3', root: 'C', quality: 'maj7', symbol: 'Cmaj7', beats: 4, degree: 'Imaj7', color: 'border-amber-400/80' },
+          { id: 'ns4', root: 'A', quality: '7', symbol: 'A7', beats: 4, degree: 'VI7', color: 'border-purple-400/80' },
+        ],
+      },
+    ];
+    localStorage.setItem(STORAGE_KEYS.PROGRESSIONS, JSON.stringify(initial));
+    return initial;
+  },
+
+  saveProgression(progression: CustomChordProgression): void {
+    const list = this.getProgressions();
+    const existingIndex = list.findIndex((p) => p.id === progression.id);
+    let updated: CustomChordProgression[];
+    if (existingIndex >= 0) {
+      updated = [...list];
+      updated[existingIndex] = progression;
+    } else {
+      updated = [progression, ...list];
+    }
+    localStorage.setItem(STORAGE_KEYS.PROGRESSIONS, JSON.stringify(updated));
+  },
+
+  deleteProgression(id: string): void {
+    const list = this.getProgressions().filter((p) => p.id !== id);
+    localStorage.setItem(STORAGE_KEYS.PROGRESSIONS, JSON.stringify(list));
+  },
+
+  // Online Lessons & Zoom Teaching Sessions
+  getLessons(): OnlineLessonSession[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.LESSONS);
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch (e) {
+        console.error('Error reading lessons:', e);
+      }
+    }
+    const initial: OnlineLessonSession[] = [
+      {
+        id: 'lesson-101',
+        studentName: 'Maya Kovacs',
+        studentEmail: 'maya.k@example.com',
+        scheduledTime: 'Today at 5:00 PM',
+        durationMinutes: 45,
+        topic: 'A Minor Pentatonic Box 1 & Whole-Step Bends',
+        level: 'Intermediate',
+        key: 'A',
+        scaleId: 'minor-pentatonic',
+        zoomMeetingId: '849 2039 1148',
+        zoomMeetingUrl: 'https://zoom.us/j/84920391148?pwd=FRETMASTER_CLASSROOM',
+        zoomPasscode: 'GUITAR24',
+        notes: 'Review index finger anchor and wrist rotation on 3rd string whole-step bend at 7th fret. Practice alternate picking over 90 BPM backing track.',
+        homework: [
+          'Practice Box 1 ascending & descending with metronome at 80-100 BPM',
+          'Target root note (A) on downbeat of measure 1 and 3',
+          'Record a 4-bar improvisation loop for teacher review'
+        ],
+        completed: false,
+        createdAt: Date.now() - 3600000 * 5,
+      },
+      {
+        id: 'lesson-102',
+        studentName: 'Liam Doherty',
+        studentEmail: 'liam.d@example.com',
+        scheduledTime: 'Tomorrow at 3:30 PM',
+        durationMinutes: 60,
+        topic: 'Barre Chords Transitions & Funk Comping (16th-note grooves)',
+        level: 'Beginner',
+        key: 'E',
+        scaleId: 'blues-scale',
+        zoomMeetingId: '912 4471 8820',
+        zoomMeetingUrl: 'https://zoom.us/j/91244718820?pwd=FRETMASTER_CLASSROOM',
+        zoomPasscode: 'GROOVE99',
+        notes: 'Thumb placement behind 2nd fret, check for clean ring on B and high E strings. Mute unwanted bass strings with index tip.',
+        homework: [
+          'F Major to C Major clean transition challenge (10 reps without pause)',
+          'Syncopated scratch rhythm on beats 2 and 4',
+          'Check pitch tuner accuracy on high strings'
+        ],
+        completed: false,
+        createdAt: Date.now() - 3600000 * 12,
+      },
+      {
+        id: 'lesson-103',
+        studentName: 'Sophia Tran',
+        studentEmail: 'sophia.tran@example.com',
+        scheduledTime: 'Friday at 6:00 PM',
+        durationMinutes: 45,
+        topic: 'Jazz ii-V-I Voicings & Arpeggios (Shell Chords)',
+        level: 'Advanced',
+        key: 'C',
+        scaleId: 'major-scale',
+        zoomMeetingId: '773 9921 4056',
+        zoomMeetingUrl: 'https://zoom.us/j/77399214056?pwd=FRETMASTER_CLASSROOM',
+        zoomPasscode: 'JAZZVOICE',
+        notes: 'Dm7 -> G7 -> Cmaj7 rootless shell voicings with voice-leading through 3rds and 7ths.',
+        homework: [
+          'Transpose ii-V-I voicings into G and F Major',
+          'Practice arpeggio connector lines using leading tones'
+        ],
+        completed: true,
+        createdAt: Date.now() - 86400000 * 2,
+      },
+    ];
+    localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(initial));
+    return initial;
+  },
+
+  saveLesson(lesson: OnlineLessonSession): void {
+    const list = this.getLessons();
+    const idx = list.findIndex((l) => l.id === lesson.id);
+    let updated: OnlineLessonSession[];
+    if (idx >= 0) {
+      updated = [...list];
+      updated[idx] = lesson;
+    } else {
+      updated = [lesson, ...list];
+    }
+    localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(updated));
+  },
+
+  deleteLesson(id: string): void {
+    const list = this.getLessons().filter((l) => l.id !== id);
+    localStorage.setItem(STORAGE_KEYS.LESSONS, JSON.stringify(list));
   },
 };

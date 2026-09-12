@@ -12,6 +12,8 @@ import { LooperView } from './components/LooperView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { SocialFeedView } from './components/SocialFeedView';
 import { CreatorStudioView } from './components/CreatorStudioView';
+import { LiveTeachingView } from './components/LiveTeachingView';
+import { ChordEncyclopedia } from './components/ChordEncyclopedia';
 import { TunerModal } from './components/TunerModal';
 import { RemindersModal } from './components/RemindersModal';
 import { CloudSyncModal } from './components/CloudSyncModal';
@@ -114,6 +116,7 @@ export default function App() {
               selectedScale={selectedScale}
               setSelectedScale={setSelectedScale}
               livePitch={livePitch}
+              onOpenTeachingTab={() => setActiveTab('teaching')}
             />
 
             {/* Quick Practice Prompt Banner */}
@@ -158,6 +161,17 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'chords' && (
+          <ChordEncyclopedia
+            currentTuning={currentTuning}
+            onNavigateToCreator={() => setActiveTab('creator')}
+            onInspectOnFretboard={(root) => {
+              setSelectedRoot(root);
+              setActiveTab('fretboard');
+            }}
+          />
+        )}
+
         {activeTab === 'backing-tracks' && (
           <BackingTracksView onSyncFretboard={handleSyncFretboardFromTrack} />
         )}
@@ -175,7 +189,11 @@ export default function App() {
         )}
 
         {activeTab === 'creator' && (
-          <CreatorStudioView />
+          <CreatorStudioView onSyncFretboard={handleSyncFretboardFromTrack} />
+        )}
+
+        {activeTab === 'teaching' && (
+          <LiveTeachingView onSyncFretboard={handleSyncFretboardFromTrack} />
         )}
       </main>
 

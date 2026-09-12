@@ -37,12 +37,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const tabs = [
     { id: 'fretboard', label: 'Fretboard', icon: '🎸' },
+    { id: 'chords', label: 'Chord Encyclopedia', icon: '📖' },
     { id: 'trainer', label: 'Audio Trainer', icon: '🎯' },
     { id: 'backing-tracks', label: 'Backing Tracks', icon: '🎶' },
     { id: 'looper', label: 'Looper & Export', icon: '🎙️' },
     { id: 'analytics', label: 'Analytics & Heatmap', icon: '📊' },
     { id: 'community', label: 'Community', icon: '🌍' },
     { id: 'creator', label: 'Creator Studio', icon: '💎' },
+    { id: 'teaching', label: 'Live Lessons & Zoom', icon: '🎥' },
   ];
 
   return (

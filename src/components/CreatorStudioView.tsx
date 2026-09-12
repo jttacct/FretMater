@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { CreatorStats, DigitalAsset, TipTransaction } from '../types/guitar';
+import { CreatorStats, DigitalAsset, TipTransaction, NoteName, ScaleDefinition } from '../types/guitar';
 import { storage } from '../utils/storage';
 import { soundEngine } from '../utils/soundEngine';
+import { ChordProgressionBuilder } from './ChordProgressionBuilder';
+import { ChordEncyclopedia } from './ChordEncyclopedia';
 import confetti from 'canvas-confetti';
 import {
   DollarSign,
@@ -19,9 +21,21 @@ import {
   Sparkles,
   CheckCircle2,
   Key,
+  Layers,
+  Sliders,
+  BookOpen,
 } from 'lucide-react';
 
-export const CreatorStudioView: React.FC = () => {
+interface CreatorStudioViewProps {
+  onSyncFretboard?: (key: NoteName, scale: ScaleDefinition) => void;
+  onOpenChordEncyclopedia?: () => void;
+}
+
+export const CreatorStudioView: React.FC<CreatorStudioViewProps> = ({
+  onSyncFretboard,
+  onOpenChordEncyclopedia,
+}) => {
+  const [activeStudioSection, setActiveStudioSection] = useState<'builder' | 'encyclopedia' | 'monetization' | 'all'>('builder');
   const [stats, setStats] = useState<CreatorStats>(storage.getCreatorStats());
   const [assets, setAssets] = useState<DigitalAsset[]>(storage.getDigitalAssets());
   const [tips, setTips] = useState<TipTransaction[]>(storage.getTips());
@@ -165,6 +179,67 @@ export const CreatorStudioView: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Studio Header Sub-Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-2 bg-slate-900/90 border border-slate-800 rounded-2xl">
+        <div className="flex items-center gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800/80">
+          <button
+            onClick={() => setActiveStudioSection('builder')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeStudioSection === 'builder'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Layers className="w-4 h-4" />
+            <span>Chord Progression Builder</span>
+          </button>
+
+          <button
+            onClick={() => setActiveStudioSection('encyclopedia')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeStudioSection === 'encyclopedia'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Chord Encyclopedia</span>
+          </button>
+
+          <button
+            onClick={() => setActiveStudioSection('monetization')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeStudioSection === 'monetization'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <CreditCard className="w-4 h-4" />
+            <span>Monetization & Vault</span>
+          </button>
+
+          <button
+            onClick={() => setActiveStudioSection('all')}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              activeStudioSection === 'all'
+                ? 'bg-slate-800 text-amber-300 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Sliders className="w-4 h-4" />
+            <span>All Studio Tools</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3 px-3 py-1 text-xs text-slate-400">
+          <span className="flex items-center gap-1 text-emerald-400 font-mono">
+            <ShieldCheck className="w-3.5 h-3.5" /> Studio Connected
+          </span>
+          <span className="font-mono text-slate-500">|</span>
+          <span>MRR: <strong className="text-emerald-400 font-mono">${stats.monthlyRecurringRevenue.toFixed(2)}</strong></span>
+        </div>
+      </div>
+
       {/* Top Financial Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-lg">
@@ -214,6 +289,24 @@ export const CreatorStudioView: React.FC = () => {
         </div>
       </div>
 
+      {/* Interactive Chord Progression Builder */}
+      {(activeStudioSection === 'builder' || activeStudioSection === 'all') && (
+        <ChordProgressionBuilder
+          onSyncFretboard={onSyncFretboard}
+          onOpenChordEncyclopedia={() => setActiveStudioSection('encyclopedia')}
+        />
+      )}
+
+      {/* Chord Encyclopedia View within Creator Studio */}
+      {(activeStudioSection === 'encyclopedia' || activeStudioSection === 'all') && (
+        <ChordEncyclopedia
+          onNavigateToCreator={() => setActiveStudioSection('builder')}
+        />
+      )}
+
+      {/* Monetization, Tiered Subscriptions, Tip Jar, Store & Vault */}
+      {(activeStudioSection === 'monetization' || activeStudioSection === 'all') && (
+        <>
       {/* Tiered Subscription Plans */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -662,6 +755,8 @@ export const CreatorStudioView: React.FC = () => {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };
